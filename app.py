@@ -13,8 +13,6 @@ if "GOOGLE_API_KEY" not in st.session_state:
 
 # Sidebar configuration
 with st.sidebar:
-    st.image("static/iffort blue logo.png", 
-    width=150)
     st.title("ℹ️ Configuration")
     
     if not st.session_state.GOOGLE_API_KEY:
