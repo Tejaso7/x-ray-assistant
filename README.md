@@ -1,7 +1,10 @@
 # Medical Imaging Diagnosis Agent
 
 A Streamlit application that utilizes Google's Gemini AI to analyze and provide diagnostic insights for medical images, supported by web search capabilities.
+
 https://x-ray-tejx.streamlit.app/
+
+https://x-ray-chatbot.streamlit.app/
 ## Overview
 
 This application allows healthcare professionals and users to upload medical images (X-ray, MRI, CT, Ultrasound, etc.) and receive a comprehensive AI-powered analysis. The agent provides structured insights including image type identification, key findings, diagnostic assessment, and patient-friendly explanations, all supported by recent medical literature through integrated web search.
