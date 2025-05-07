@@ -1,50 +1,38 @@
 import os
+import base64
+import tempfile
 from PIL import Image
-import inspect  # Added for function inspection
-from phi.agent import Agent
-
-from phi.model.google import Gemini
 import streamlit as st
+from fpdf import FPDF
+from phi.agent import Agent
+from phi.model.google import Gemini
 from phi.tools.duckduckgo import DuckDuckGo
 
-# Streamlit session state for API key
+# --- SESSION STATE ---
 if "GOOGLE_API_KEY" not in st.session_state:
     st.session_state.GOOGLE_API_KEY = None
+if "analysis_result" not in st.session_state:
+    st.session_state.analysis_result = None
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-# Sidebar configuration
+# --- SIDEBAR CONFIG ---
 with st.sidebar:
-    st.title("ℹ️ Configuration")
-    
+    st.title("🔐 API Configuration")
     if not st.session_state.GOOGLE_API_KEY:
-        api_key = st.text_input(
-            "Enter your Google API Key:",
-            type="password"
-        )
-        st.caption(
-            "Get your API key from [Google AI Studio]"
-            "(https://aistudio.google.com/apikey) 🔑"
-        )
+        api_key = st.text_input("Enter Google API Key:", type="password")
+        st.caption("[Get your API key](https://aistudio.google.com/apikey)")
         if api_key:
             st.session_state.GOOGLE_API_KEY = api_key
-            st.success("API Key saved!")
+            st.success("✅ API Key saved!")
             st.rerun()
     else:
-        st.success("API Key is configured")
-        if st.button("🔄 Reset API Key"):
+        st.success("API Key configured")
+        if st.button("🔄 Reset Key"):
             st.session_state.GOOGLE_API_KEY = None
             st.rerun()
-    
-    st.info(
-        "This tool provides AI-powered analysis of medical imaging data using "
-        "advanced computer vision and radiological expertise."
-    )
-    # st.warning(
-    #     "⚠DISCLAIMER: This tool is for educational and informational purposes only. "
-    #     "All analyses should be reviewed by qualified healthcare professionals. "
-    #     "Do not make medical decisions based solely on this analysis."
-    # )
 
-# Initialize the medical agent
+# --- AI AGENT INIT ---
 medical_agent = Agent(
     model=Gemini(
         api_key=st.session_state.GOOGLE_API_KEY,
@@ -54,11 +42,11 @@ medical_agent = Agent(
     markdown=True
 ) if st.session_state.GOOGLE_API_KEY else None
 
-if not medical_agent:
-    st.warning("Please configure your API key in the sidebar to continue")
+# --- PROMPT TEMPLATE ---
+def generate_prompt(image_type="X-ray", region="Chest"):
+    return f"""
+You are a skilled radiologist. Analyze the uploaded {image_type} of the {region} and structure your response with:
 
-# Medical Analysis Query
-query = """
 You are a highly skilled medical imaging expert with extensive knowledge in radiology and diagnostic imaging. Analyze the patient's medical image and structure your response as follows:
 
 ### 1. Image Type & Region
@@ -96,71 +84,80 @@ IMPORTANT: Use the DuckDuckGo search tool to:
 Format your response using clear markdown headers and bullet points. Be concise yet thorough.
 """
 
-# Streamlit app layout
-st.title("Medical Imaging Diagnosis Agent")
-st.write("Upload a medical image for analysis")
+# --- UI ---
+st.set_page_config(page_title="🧠 Medical Imaging Diagnosis", layout="wide")
+st.title("🧠 Medical Imaging Diagnosis Agent")
+st.markdown("> Upload a medical image and get a detailed AI-based diagnostic report.")
 
-# Create containers for better organization
-upload_container = st.container()
-image_container = st.container()
-analysis_container = st.container()
+# --- TABS ---
+tab1, tab2, tab3 = st.tabs(["📤 Upload Image", "📋 Diagnosis", "💬 Chat with AI"])
 
-# Image uploader
-with upload_container:
-    uploaded_file = st.file_uploader(
-        "Upload Medical Image",
-        type=["jpg", "jpeg", "png"],
-        help="Supported formats: JPG, JPEG, PNG"
-    )
-
-# Process uploaded image
-if uploaded_file is not None:
-    with image_container:
-        # Center the image using columns
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
+with tab1:
+    uploaded_files = st.file_uploader("Upload medical images (JPG, PNG)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
             image = Image.open(uploaded_file)
-            # Calculate aspect ratio for resizing
-            width, height = image.size
-            aspect_ratio = width / height
-            new_width = 500
-            new_height = int(new_width / aspect_ratio)
-            resized_image = image.resize((new_width, new_height))
-            
-            st.image(
-                resized_image,
-                caption="Uploaded Medical Image",
-                use_container_width=True
-            )
-            
-            analyze_button = st.button(
-                "🔍 Analyze Image",
-                type="primary",
-                use_container_width=True
-            )
-    
-    # Analyze the image
-    with analysis_container:
-        if analyze_button:
-            image_path = "temp_medical_image.png"
-            with open(image_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
-            with st.spinner("🔄 Analyzing image... Please wait."):
-                try:
-                    response = medical_agent.run(query, images=[image_path])
-                    st.markdown("### 📋 Analysis Results")
-                    st.markdown("---")
-                    st.markdown(response.content)
-                    st.markdown("---")
-                    st.caption(
-                        "Note: This analysis is generated by AI and should be reviewed by "
-                        "a qualified healthcare professional."
-                    )
-                except Exception as e:
-                    st.error(f"Analysis error: {e}")
-                finally:
-                    if os.path.exists(image_path):
+            st.image(image, caption=f"Uploaded Image: {uploaded_file.name}", use_column_width=True)
+
+            with st.expander("🧾 Image Details"):
+                st.write(f"**Filename:** {uploaded_file.name}")
+                st.write(f"**Format:** {image.format}")
+                st.write(f"**Dimensions:** {image.size[0]} x {image.size[1]} px")
+
+            if st.button(f"🔍 Analyze {uploaded_file.name}", key=uploaded_file.name):
+                image_path = f"temp_{uploaded_file.name}"
+                with open(image_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                with st.spinner("🔄 Analyzing image..."):
+                    try:
+                        prompt = generate_prompt()
+                        response = medical_agent.run(prompt, images=[image_path])
+                        st.session_state.analysis_result = response.content
+                        st.success("✅ Analysis complete!")
                         os.remove(image_path)
-else:
-    st.info("👆 Please upload a medical image to begin analysis")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+    else:
+        st.info("Please upload medical images to proceed.")
+
+with tab2:
+    if st.session_state.analysis_result:
+        st.markdown(st.session_state.analysis_result)
+        st.caption("⚠️ This is an AI-generated report. Always consult a certified medical professional.")
+
+        # --- PDF Export ---
+        if st.button("📄 Export Report as PDF"):
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            for line in st.session_state.analysis_result.split('\n'):
+                pdf.multi_cell(0, 10, line)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
+                pdf.output(tmpfile.name)
+                with open(tmpfile.name, "rb") as f:
+                    base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+                pdf_display = f'<a href="data:application/pdf;base64,{base64_pdf}" download="diagnosis_report.pdf">📥 Download Report</a>'
+                st.markdown(pdf_display, unsafe_allow_html=True)
+                os.remove(tmpfile.name)
+    else:
+        st.info("No analysis available. Please analyze an image first.")
+
+with tab3:
+    st.subheader("💬 Chat with the Medical AI")
+    user_input = st.text_input("Ask a question about the diagnosis or your symptoms:")
+    if st.button("💡 Get Answer"):
+        if user_input and medical_agent:
+            full_prompt = f"""You are a medical assistant. The user has received the following analysis:\n\n{st.session_state.analysis_result}\n\nNow answer this question:\n{user_input}"""
+            with st.spinner("Thinking..."):
+                try:
+                    followup = medical_agent.run(full_prompt)
+                    st.session_state.chat_history.append((user_input, followup.content))
+                except Exception as e:
+                    st.error(f"Failed to get response: {e}")
+        else:
+            st.warning("Please enter a question.")
+
+    if st.session_state.chat_history:
+        for i, (q, a) in enumerate(reversed(st.session_state.chat_history), 1):
+            st.markdown(f"**Q{i}:** {q}")
+            st.markdown(f"**A{i}:** {a}")
