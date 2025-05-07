@@ -2,7 +2,7 @@
 
 A Streamlit application that utilizes Google's Gemini AI to analyze and provide diagnostic insights for medical images, supported by web search capabilities.
 
-https://x-ray-tejx.streamlit.app/
+https://x-ray-Agent.streamlit.app/
 
 https://x-ray-chatbot.streamlit.app/
 ## Overview
